@@ -71,15 +71,25 @@ function priceDisplay(o) {
   return `${r.price || '-'} د`;
 }
 
+function cleanField(v, fallback = '-') {
+  const s = String(v == null ? '' : v).trim();
+  return s || fallback;
+}
+function oneLine(v, fallback = '-') {
+  return cleanField(v, fallback).replace(/\s+/g, ' ');
+}
 function line(o, i = 0) {
   const r = repaired(o);
-  return `${i ? i + '.\n' : ''}${r.orderId} | ${r.name || 'بدون اسم'} | ${r.phone || '-'}\n` +
-    ` ${r.area || '-'} | ${r.product || '-'} | ${priceDisplay(r)}\n` +
-    ` ${r.deliveryCompany || '-'} | ️ الزبون: ${niceDate(r.customerDeliveryDate)} | تسليم الشركة: ${niceDate(r.companyHandoffDate)}\n` +
-    `الحالة: ${statusLabel(r.status)}` +
-    (r.priceWarning ? `\n⚠️ تحذير السعر: ${String(r.priceWarning).split('\n')[0].replace('⚠️', '').trim()}` : '');
+  const rows = [];
+  rows.push((i ? i + ') ' : '') + cleanField(r.orderId) + ' | ' + cleanField(r.name, 'بدون اسم') + ' | ' + cleanField(r.phone));
+  rows.push('📍 ' + oneLine(r.area) + ' | 💰 ' + priceDisplay(r) + ' | 🚚 ' + cleanField(r.deliveryCompany));
+  rows.push('🎨 ' + oneLine(r.product));
+  rows.push('📅 الزبون: ' + niceDate(r.customerDeliveryDate) + ' | الشركة: ' + niceDate(r.companyHandoffDate));
+  rows.push('الحالة: ' + statusLabel(r.status));
+  if (r.notes) rows.push('📝 ' + oneLine(r.notes).slice(0, 120));
+  if (r.priceWarning) rows.push('⚠️ تحذير السعر: ' + String(r.priceWarning).split('\n')[0].replace('⚠️', '').trim());
+  return rows.join('\n');
 }
-
 function totalLine(orders) {
   return `\n المجموع غير الملغي والسليم: ${orders.reduce((s, o) => s + money(o), 0)} د`;
 }
