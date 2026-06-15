@@ -13,7 +13,7 @@ function validate(decision, db) {
     if (missing.length) return { ok: false, clarify: true, question: `الطلب ناقص: ${missing.join(', ')}. كملهم برسالة وحدة.` };
     return { ok: true, decision: d };
   }
-  if (['delay_order','cancel_order','mark_company_handoff','mark_customer_delivered','update_order'].includes(d.intent)) {
+  if (['delay_order','cancel_order','delete_order','mark_company_handoff','mark_customer_delivered','update_order','delete_order'].includes(d.intent)) {
     const resolved = resolveSingleOrder(db, d);
     if (!resolved.ok) {
       if (resolved.reason === 'multiple') {
@@ -26,7 +26,7 @@ function validate(decision, db) {
     if (d.intent === 'update_order' && (!d.patch || !Object.keys(d.patch).length)) return { ok: false, clarify: true, question: 'شو التعديل المطلوب على الطلب؟' };
     return { ok: true, decision: { ...d, resolvedOrder: resolved.order } };
   }
-  if (['get_today_handoff','get_registered_today','get_product_summary_today','get_shipped_today','get_future_orders','get_company_account','get_order_details','help_menu','learn_rule'].includes(d.intent)) return { ok: true, decision: d };
+  if (['get_today_handoff','get_registered_today','get_product_summary_today','get_shipped_today','get_future_orders','get_company_account','get_order_details','help_menu','learn_rule','delete_order'].includes(d.intent)) return { ok: true, decision: d };
   if (d.intent === 'clarify') return { ok: false, clarify: true, question: d.question || 'وضحلي أكثر شو بدك أعمل؟' };
   return { ok: true, decision: { intent: 'chat_advice', shouldTouchData: false, chatAnswer: '' } };
 }

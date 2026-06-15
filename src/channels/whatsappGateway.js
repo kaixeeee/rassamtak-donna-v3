@@ -34,11 +34,7 @@ function formatOrderReceipt(order, { mode = 'new' } = {}) {
     : '';
 
   const deliveryCompany = order.deliveryCompany || 'نت';
-  const actionLine = mode === 'followup'
-    ? 'اختار الحالة بالرياكت: ✅ تم | ❌ ملغي | ⏰ تأجل | 👤 تامر | 🚚 نت'
-    : 'اختار بالرياكت: 🚚 نت | 👤 تامر | ✅ تم | ❌ ملغي | ⏰ مؤجل. أو اعمل Reply واكتب: نت / تامر / تم / ملغي / أجل لبكرا';
-
-  return [
+  const actionLine = mode === 'new' ? 'اختار شركة التوصيل فقط: 🚚 نت | 👤 تامر' : 'اختار الحالة بالرياكت: ✅ تم | ❌ ملغي | ⏰ تأجل'; return [
     title,
     '',
     `👤 ${order.name || 'بدون اسم'}`,

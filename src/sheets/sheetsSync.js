@@ -246,7 +246,62 @@ class SheetsSync {
     ] } });
   }
 
-  async importExistingOrders(db) {
+  
+async readOrders() {
+  if (!this.ready) return [];
+  await this.ensureHeader();
+  const range = `${config.sheets.sheetName}!A2:M`;
+  const res = await this.sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheets.spreadsheetId,
+    range,
+  }).catch(() => ({ data: { values: [] } }));
+  const rows = res.data.values || [];
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] || [];
+    if (!row.join('').trim()) continue;
+    out.push(repairOrder({
+      orderId: val(row, 0),
+      createdAt: val(row, 1),
+      name: val(row, 2),
+      phone: val(row, 3),
+      area: val(row, 4),
+      product: val(row, 5),
+      price: val(row, 6),
+      deliveryCompany: val(row, 7) || config.business.defaultDeliveryCompany,
+      customerDeliveryDate: val(row, 8),
+      companyHandoffDate: val(row, 9),
+      status: normalizeStatus(val(row, 10)),
+      notes: val(row, 11),
+      priceWarning: val(row, 12),
+      sheetRow: i + 2,
+    }));
+  }
+  return out;
+}
+
+async softDeleteOrder(orderId, extraNote = '') {
+  if (!this.ready) return false;
+  await this.ensureHeader();
+  const row = await this.findRow(orderId);
+  if (!row) return false;
+  const current = await this.sheets.spreadsheets.values.get({
+    spreadsheetId: config.sheets.spreadsheetId,
+    range: `${config.sheets.sheetName}!A${row}:M${row}`,
+  }).catch(() => ({ data: { values: [[]] } }));
+  const values = (current.data.values || [[]])[0] || [];
+  const oldNotes = val(values, 11);
+  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
+  const note = [oldNotes, extraNote || `تم الحذف بواسطة المستخدم ${stamp}`].filter(Boolean).join(' | ');
+  await this.sheets.spreadsheets.values.update({
+    spreadsheetId: config.sheets.spreadsheetId,
+    range: `${config.sheets.sheetName}!K${row}:L${row}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [['محذوف', note]] },
+  });
+  return true;
+}
+ async importExistingOrders(db) {
     if (!this.ready || !db) return { imported: 0 };
     await this.ensureHeader();
     const range = `${config.sheets.sheetName}!A:M`;

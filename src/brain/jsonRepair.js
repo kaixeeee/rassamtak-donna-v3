@@ -31,7 +31,7 @@ function normalizeDecision(d = {}) {
     patch: d.patch || {},
     missing: Array.isArray(d.missing) ? d.missing : []
   };
-  const dataIntents = ['create_order','delay_order','cancel_order','mark_company_handoff','mark_customer_delivered','update_order','get_today_handoff','get_registered_today','get_product_summary_today','get_shipped_today','get_future_orders','get_company_account','get_order_details','learn_rule'];
+  const dataIntents = ['create_order','delay_order','cancel_order','mark_company_handoff','mark_customer_delivered','update_order','delete_order','get_today_handoff','get_registered_today','get_product_summary_today','get_shipped_today','get_future_orders','get_company_account','get_order_details','batch_mark_company_handoff','batch_mark_customer_delivered','batch_cancel_orders','batch_update_company','learn_rule'];
   if (dataIntents.includes(out.intent)) out.shouldTouchData = true;
   if (out.intent === 'chat_advice' || out.intent === 'ignore' || out.intent === 'help_menu') out.shouldTouchData = false;
   return out;

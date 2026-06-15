@@ -42,7 +42,7 @@ function applyOrderPatch(order, patch = {}) {
   return out;
 }
 
-async function execute(decision, { db, sheets }) {
+ async function batchUpdateOrdersByRange({ db, sheets, start, end, patch, eventType, label, followup = false }) { let a = Number(start); let b = Number(end); if (!Number.isFinite(a) || !Number.isFinite(b)) return { text: 'مش فاهم أرقام الطلبات. اكتب مثلاً: بوت الطلب من 51 ل 60 مسلم' }; if (b < a) { const t = a; a = b; b = t; } const total = b - a + 1; if (total > 50) return { text: 'النطاق كبير شوي. قسمه على دفعات أصغر عشان ما نعدل طلبات بالغلط.' }; const updated = []; const missing = []; for (let n = a; n <= b; n++) { const id = '#' + String(n).padStart(3, '0'); const order = db.findOrderById ? db.findOrderById(n) : (db.getOrders().find(o => o.orderId === id) || null); if (!order) { missing.push(id); continue; } const u = db.updateOrder(order.orderId, patch, eventType, { batchRange: a + '-' + b }); if (!u) { missing.push(id); continue; } updated.push(u.orderId); if (followup) addFollowupReminder(db, u); if (sheets && config.sheets.syncOnWrite) await sheets.upsertOrder(u).catch(() => null); } const lines = [`✅ تم تحديث ${updated.length} طلب من #${String(a).padStart(3, '0')} إلى #${String(b).padStart(3, '0')}`, `التعديل: ${label}`]; if (missing.length) lines.push('⚠️ ما لقيت: ' + missing.join('، ')); return { text: lines.join('\n') }; } async function execute(decision, { db, sheets }) {
   const d = decision;
   switch (d.intent) {
     case 'help_menu': return { text: helpMenu() };
@@ -96,7 +96,8 @@ async function execute(decision, { db, sheets }) {
       if (sheets && config.sheets.syncOnWrite) await sheets.upsertOrder(updated).catch(() => null);
       return { text: `تمام، أجّلت ${updated.orderId} لموعد الزبون ${updated.customerDeliveryDate}. تسليم الشركة: ${updated.companyHandoffDate}.` };
     }
-    case 'cancel_order': {
+    case 'delete_order': { const order = d.resolvedOrder; const deletedAt = new Date().toISOString(); const notes = [order.notes, `تم الحذف بواسطة المستخدم ${deletedAt}`].filter(Boolean).join(' | '); const updated = db.updateOrder(order.orderId, { status: 'محذوف', notes, deletedAt }, 'deleted_by_command'); if (sheets && config.sheets.syncOnWrite) await sheets.upsertOrder(updated).catch(() => null); return { text: `🗑️ تم حذف الطلب ${updated.orderId} من القوائم.
+بقي موجود في Google Sheets بحالة: محذوف.` }; } case 'cancel_order': {
       const updated = db.updateOrder(d.resolvedOrder.orderId, { status: 'cancelled' }, 'cancelled');
       if (sheets && config.sheets.syncOnWrite) await sheets.upsertOrder(updated).catch(() => null);
       return { text: `تم إلغاء الطلب ${updated.orderId}. ما رح يدخل بالحساب.` };
@@ -112,12 +113,12 @@ async function execute(decision, { db, sheets }) {
       if (sheets && config.sheets.syncOnWrite) await sheets.upsertOrder(updated).catch(() => null);
       return { text: `تم تحديث ${updated.orderId}: وصل للمشتري. ما رح أذكرك فيه مرة ثانية.` };
     }
-    case 'get_today_handoff': return { text: todayHandoff(db) };
-    case 'get_registered_today': return { text: registeredToday(db) };
-    case 'get_product_summary_today': return { text: productSummaryToday(db) };
-    case 'get_shipped_today': return { text: shippedToday(db) };
-    case 'get_future_orders': return { text: futureOrders(db) };
-    case 'get_company_account': return { text: companyAccount(db, d.company) };
+    case 'batch_mark_company_handoff': return await batchUpdateOrdersByRange({ db, sheets, start: d.rangeStart, end: d.rangeEnd, patch: { status: 'company_handoff' }, eventType: 'batch_company_handoff', label: 'سُلّم للشركة', followup: true }); case 'batch_mark_customer_delivered': return await batchUpdateOrdersByRange({ db, sheets, start: d.rangeStart, end: d.rangeEnd, patch: { status: 'customer_delivered' }, eventType: 'batch_customer_delivered', label: 'تم للمشتري' }); case 'batch_cancel_orders': return await batchUpdateOrdersByRange({ db, sheets, start: d.rangeStart, end: d.rangeEnd, patch: { status: 'cancelled' }, eventType: 'batch_cancelled', label: 'ملغي' }); case 'batch_update_company': return await batchUpdateOrdersByRange({ db, sheets, start: d.rangeStart, end: d.rangeEnd, patch: { deliveryCompany: d.company || config.business.defaultDeliveryCompany }, eventType: 'batch_delivery_company', label: 'شركة التوصيل: ' + (d.company || config.business.defaultDeliveryCompany) }); case 'get_today_handoff': return { text: await todayHandoff(sheets || db) };
+    case 'get_registered_today': return { text: await registeredToday(sheets || db) };
+    case 'get_product_summary_today': return { text: await productSummaryToday(sheets || db) };
+    case 'get_shipped_today': return { text: await shippedToday(sheets || db) };
+    case 'get_future_orders': return { text: await futureOrders(sheets || db) };
+    case 'get_company_account': return { text: await companyAccount(sheets || db, d.company) };
     case 'get_order_details': return { text: 'اكتب رقم الطلب أو الاسم عشان أطلعلك التفاصيل.' };
     case 'learn_rule': return { text: 'تمام، سجّللي التصحيح بصيغة: بوت تعلم منتج: كلمة = اسم المنتج الصحيح' };
     default: return { text: 'مش متأكد شو المطلوب. احكيلي بشكل أبسط أو اكتب رقم الطلب.' };
