@@ -1,0 +1,24 @@
+{
+  "name": "rassamtak-donna-v3",
+  "version": "3.10.0",
+  "description": "Donna v3 - AI operations secretary for Rassamtak orders",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node scripts/self-test.js",
+    "check": "node scripts/self-test.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7",
+    "googleapis": "^144.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
