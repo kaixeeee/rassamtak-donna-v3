@@ -24,30 +24,35 @@ function statusLabel(status) {
 
 function formatOrderReceipt(order, { mode = 'new' } = {}) {
   const title = mode === 'followup'
-    ? `🔔 متابعة ${order.orderId}`
+    ? `متابعة ${order.orderId}`
     : mode === 'handoff'
-      ? `📦 تسليم شركة ${order.orderId}`
+      ? `تسليم شركة ${order.orderId}`
       : `✅ تم تسجيل ${order.orderId}`;
+
   const warning = order.priceWarning && order.priceWarningStatus !== 'acknowledged'
     ? `\n\n${String(order.priceWarning).replace('رقم الطلب', order.orderId)}`
     : '';
-  const actionLine = mode === 'followup'
-    ? 'اختار الحالة بالرياكت: ✅ تم | ❌ ملغي | ⏰ تأجل'
-    : (order.deliveryCompany
-      ? `شركة التوصيل الحالية: ${order.deliveryCompany}. للتعديل اعمل Reply على الكرت واكتب: نت / تامر`
-      : 'داخل عمّان: اختار الشركة بالرد على الكرت: نت / تامر. خارج عمّان: تُحسب نت تلقائياً.');
-  return `${title}
-👤 ${order.name || 'بدون اسم'}
-📞 ${order.phone || '-'}
-📍 ${order.area || '-'}
-🎨 ${order.product || '-'}
-💰 ${order.price || '-'} د
-🚚 ${order.deliveryCompany || '-'}
-🗓️ موعد الزبون: ${order.customerDeliveryDate || '-'}
-📦 تسليم الشركة: ${order.companyHandoffDate || '-'}
-الحالة: ${statusLabel(order.status)}${warning}
 
-${actionLine}`;
+  const deliveryCompany = order.deliveryCompany || 'نت';
+  const actionLine = mode === 'followup'
+    ? 'اختار الحالة بالرياكت: ✅ تم | ❌ ملغي | ⏰ تأجل | 👤 تامر | 🚚 نت'
+    : 'اختار بالرياكت: 🚚 نت | 👤 تامر | ✅ تم | ❌ ملغي | ⏰ مؤجل. أو اعمل Reply واكتب: نت / تامر / تم / ملغي / أجل لبكرا';
+
+  return [
+    title,
+    '',
+    `👤 ${order.name || 'بدون اسم'}`,
+    `📍 المنطقة: ${order.area || '-'}`,
+    `📞 ${order.phone || '-'}`,
+    `🎨 ${order.product || '-'}`,
+    `💰 ${order.price || '-'} د`,
+    `🚚 شركة التوصيل: ${deliveryCompany}`,
+    `🗓️ موعد الزبون: ${order.customerDeliveryDate || '-'}`,
+    `📦 تسليم الشركة: ${order.companyHandoffDate || '-'}`,
+    `الحالة: ${statusLabel(order.status)}${warning}`,
+    '',
+    actionLine,
+  ].join('\n');
 }
 
 class WhatsAppGateway {
@@ -269,59 +274,95 @@ class WhatsAppGateway {
   }
 
   async sendOrderCard(order, { quoteMsg = null, mode = 'new' } = {}) {
-    const text = formatOrderReceipt(order, { mode });
-    let sent = null;
-    if (quoteMsg && typeof quoteMsg.reply === 'function') sent = await quoteMsg.reply(text);
-    else sent = await this.sendToTarget(text);
-    const msgId = sent?.id?._serialized || sent?.id?.id || '';
-    if (msgId) {
-      const key = mode === 'followup' ? 'followupMessageId' : mode === 'handoff' ? 'handoffMessageId' : 'receiptMessageId';
-      const updated = this.db.updateOrder(order.orderId, { source: { ...(order.source || {}), [key]: msgId } }, `${key}_linked`, { msgId });
-      if (updated) order = updated;
+  // حتى لو الشركة فاضية لأي سبب قديم، الكرت الجديد لازم يظهر نت ويحفظها.
+  if (!order.deliveryCompany) {
+    const updatedDefaultCompany = this.db.updateOrder(
+      order.orderId,
+      { deliveryCompany: 'نت' },
+      'default_company_net_before_card',
+      { reason: 'empty_delivery_company' }
+    );
+    if (updatedDefaultCompany) {
+      order = updatedDefaultCompany;
+      await this.syncOrder(order);
+    } else {
+      order.deliveryCompany = 'نت';
     }
-    const emojis = mode === 'followup' ? ['✅','❌','⏰'] : ['🚚','📦'];
-    await this.addQuickReactions(sent, emojis);
-    return sent;
   }
 
-  async sendOrderActionCards(orders = [], { mode = 'handoff', header = '' } = {}) {
+  const text = formatOrderReceipt(order, { mode });
+  let sent = null;
+
+  if (quoteMsg && typeof quoteMsg.reply === 'function') sent = await quoteMsg.reply(text);
+  else sent = await this.sendToTarget(text);
+
+  const msgId = sent?.id?._serialized || sent?.id?.id || '';
+
+  if (msgId) {
+    const key = mode === 'followup' ? 'followupMessageId' : mode === 'handoff' ? 'handoffMessageId' : 'receiptMessageId';
+    const updated = this.db.updateOrder(order.orderId, { source: { ...(order.source || {}), [key]: msgId } }, `${key}_linked`, { msgId });
+    if (updated) order = updated;
+  }
+
+  const emojis = ['🚚', '👤', '✅', '❌', '⏰'];
+  await this.addQuickReactions(sent, emojis);
+  return sent;
+}
+
+async sendOrderActionCards(orders = [], { mode = 'handoff', header = '' } = {}) {
     if (!orders.length) return;
     if (header) await this.sendToTarget(header);
     for (const order of orders) await this.sendOrderCard(order, { mode });
   }
 
   async onReaction(reaction) {
-    if (!reaction || !reaction.reaction) return;
-    const sender = reaction.senderId?._serialized || reaction.senderId || reaction.author || '';
-    if (this.isBotReactionSender(sender)) return;
-    const msgId = reaction.msgId?._serialized || reaction.msgId?.id || reaction.msgId || '';
-    if (!msgId) return;
-    const emoji = reaction.reaction;
-    const order = this.orderForReactionMessage(msgId);
-    if (!order) return;
+  if (!reaction || !reaction.reaction) return;
 
-    if (emoji === '🚚') {
-      const updated = this.db.updateOrder(order.orderId, { deliveryCompany: 'نت' }, 'company_set_by_reaction', { emoji });
-      await this.syncOrder(updated);
-      await this.sendToTarget(`🚚 تم تحديد شركة ${updated.orderId}: نت`);
-    } else if (emoji === '📦') {
-      const updated = this.db.updateOrder(order.orderId, { deliveryCompany: 'تامر' }, 'company_set_by_reaction', { emoji });
-      await this.syncOrder(updated);
-      await this.sendToTarget(`📦 تم تحديد شركة ${updated.orderId}: تامر`);
-    } else if (emoji === '✅') {
-      const updated = this.db.updateOrder(order.orderId, { status: 'customer_delivered' }, 'delivered_by_reaction', { emoji });
-      await this.syncOrder(updated);
-      await this.sendToTarget(`✅ تم تسليم ${updated.orderId} للمشتري.`);
-    } else if (emoji === '❌') {
-      const updated = this.db.updateOrder(order.orderId, { status: 'cancelled' }, 'cancelled_by_reaction', { emoji });
-      await this.syncOrder(updated);
-      await this.sendToTarget(`❌ تم إلغاء ${updated.orderId}.`);
-    } else if (emoji === '⏰' || emoji === '🔁') {
-      await this.sendToTarget(`⏰ لمتى تأجل ${order.orderId}؟ اكتب: بوت أجل ${order.orderId} للأربعاء / بكرا / بعد أسبوع`);
-    }
+  const sender = reaction.senderId?._serialized || reaction.senderId || reaction.author || '';
+  if (this.isBotReactionSender(sender)) return;
+
+  const msgId = reaction.msgId?._serialized || reaction.msgId?.id || reaction.msgId || '';
+  if (!msgId) return;
+
+  const emoji = reaction.reaction;
+  const order = this.orderForReactionMessage(msgId);
+  if (!order) return;
+
+  if (emoji === '🚚') {
+    const updated = this.db.updateOrder(order.orderId, { deliveryCompany: 'نت' }, 'company_set_by_reaction', { emoji });
+    await this.syncOrder(updated);
+    await this.sendToTarget(`🚚 تم تحديد شركة ${updated.orderId}: نت`);
+    return;
   }
 
-  async getQuotedOrder(msg) {
+  if (emoji === '👤') {
+    const updated = this.db.updateOrder(order.orderId, { deliveryCompany: 'تامر' }, 'company_set_by_reaction', { emoji });
+    await this.syncOrder(updated);
+    await this.sendToTarget(`👤 تم تحويل ${updated.orderId} إلى تامر`);
+    return;
+  }
+
+  if (emoji === '✅') {
+    const updated = this.db.updateOrder(order.orderId, { status: 'customer_delivered' }, 'delivered_by_reaction', { emoji });
+    await this.syncOrder(updated);
+    await this.sendToTarget(`✅ تم تسليم ${updated.orderId} للمشتري.`);
+    return;
+  }
+
+  if (emoji === '❌') {
+    const updated = this.db.updateOrder(order.orderId, { status: 'cancelled' }, 'cancelled_by_reaction', { emoji });
+    await this.syncOrder(updated);
+    await this.sendToTarget(`❌ تم إلغاء ${updated.orderId}.`);
+    return;
+  }
+
+  if (emoji === '⏰') {
+    await this.sendToTarget(`⏰ لمتى تأجل ${order.orderId}؟ اكتب: بوت أجل ${order.orderId} للأربعاء / بكرا / بعد أسبوع`);
+    return;
+  }
+}
+
+async getQuotedOrder(msg) {
     if (!msg || !msg.hasQuotedMsg || typeof msg.getQuotedMessage !== 'function') return null;
     try {
       const quoted = await msg.getQuotedMessage();
@@ -456,7 +497,8 @@ ${updated.product ? `🎨 ${updated.product}
           ...o,
           customerDeliveryDate: customerDate,
           companyHandoffDate: o.companyHandoffDate || computeCompanyHandoffDate(customerDate, config.business.handoffDaysBefore),
-          deliveryCompany: chooseDeliveryCompany({ area: o.area, explicitCompany: o.deliveryCompany, defaultCompany: config.business.defaultDeliveryCompany })
+          area: o.area || (/عمان/.test(body) ? 'عمان' : ''),
+    deliveryCompany: chooseDeliveryCompany({ area: o.area || (/عمان/.test(body) ? 'عمان' : ''), explicitCompany: o.deliveryCompany, defaultCompany: config.business.defaultDeliveryCompany || 'نت' })
         };
         const priceGuard = applyPriceGuardFields(orderInput);
         orderInput = { ...orderInput, ...priceGuard.patch };

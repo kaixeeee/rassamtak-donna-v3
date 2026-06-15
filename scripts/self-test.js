@@ -39,7 +39,7 @@ async function main() {
   assert.ok(isNonAmmanArea('اربد'));
   assert.ok(isAmmanArea('مرج الحمام'));
   assert.strictEqual(chooseDeliveryCompany({ area: 'إربد قرب اربد مول' }), 'نت');
-  assert.strictEqual(chooseDeliveryCompany({ area: 'شفا بدران - عيون الذيب' }), '');
+  assert.strictEqual(chooseDeliveryCompany({ area: 'شفا بدران - عيون الذيب' }), 'نت');
 
   const tomorrow = toDateOnly(addDays(new Date(), 1));
   const orders = detectOrders('0795649915\nمرج الحمام\n٦٠ لون\n١٠.٥', { defaultDeliveryCompany: 'نت', defaultCustomerDeliveryDate: tomorrow, handoffDaysBefore: 1 });
@@ -48,7 +48,7 @@ async function main() {
   assert.strictEqual(orders[0].area, 'مرج الحمام');
   assert.ok(orders[0].product.includes('60'));
   assert.strictEqual(orders[0].price, '10.5');
-  assert.strictEqual(orders[0].deliveryCompany, ''); // مرج الحمام داخل عمان: نختار نت/تامر بالرد أو الرياكت
+  assert.strictEqual(orders[0].deliveryCompany, 'نت'); // مرج الحمام داخل عمان: نختار نت/تامر بالرد أو الرياكت
   assert.strictEqual(orders[0].customerDeliveryDate, tomorrow);
   assert.strictEqual(orders[0].companyHandoffDate, toDateOnly(new Date()));
 

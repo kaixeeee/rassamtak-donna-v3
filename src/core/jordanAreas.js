@@ -46,11 +46,11 @@ function normalizeDeliveryCompany(value = '') {
 function chooseDeliveryCompany({ area = '', explicitCompany = '', defaultCompany = 'نت' } = {}) {
   const explicit = normalizeDeliveryCompany(explicitCompany);
   if (explicit === 'نت' || explicit === 'تامر') return explicit;
-  if (isNonAmmanArea(area)) return 'نت';
-  // داخل عمّان لا نختار تلقائي، لأنه المستخدم يريد الاختيار بين نت وتامر.
-  if (isAmmanArea(area)) return '';
-  // لو المنطقة غير معروفة، لا نخمن. خليه يظهر كناقص حتى يختاروا شركة.
-  return '';
+
+  // قرار نهائي حسب التشغيل:
+  // أي طلب بدون شركة توصيل صريحة يأخذ نت تلقائياً، سواء داخل عمّان أو خارجها أو حتى لو المنطقة غير واضحة.
+  // تامر يبقى اختيار يدوي فقط عبر Reply أو رياكت 👤.
+  return normalizeDeliveryCompany(defaultCompany) || 'نت';
 }
 
 function areaScope(area = '') {
